@@ -22,6 +22,12 @@ class PayloadError(ValueError):
     code = "E_PAYLOAD"
 
 
+class CodeError(PayloadError):
+    """Неможлива таблиця довжин кодів (довжина поза 1..15, Kraft != 1)."""
+
+    code = "E_CODE"
+
+
 def _normalize_mode(mode):
     """Нормалізує назву режиму стиснення."""
     value = str(mode).strip().upper().replace("-", "_").replace(" ", "_")
@@ -252,17 +258,17 @@ def _canonical_codes(lengths):
     # Перевіряємо допустимість номерів символів і довжин кодів.
     for symbol, length in lengths.items():
         if not 0 <= symbol <= 255:
-            raise PayloadError("Некоректний номер символу")
+            raise CodeError("Некоректний номер символу")
 
         if not 1 <= length <= MAX_CODE_LENGTH:
-            raise PayloadError("Некоректна довжина коду")
+            raise CodeError("Некоректна довжина коду")
 
     # Для одного символу використовується код 0 довжиною 1 біт.
     if len(lengths) == 1:
         symbol, length = next(iter(lengths.items()))
 
         if length != 1:
-            raise PayloadError("Для одного символу довжина має бути 1")
+            raise CodeError("Для одного символу довжина має бути 1")
 
         return {symbol: (0, 1)}
 
@@ -273,7 +279,7 @@ def _canonical_codes(lengths):
     )
 
     if kraft_sum != (1 << MAX_CODE_LENGTH):
-        raise PayloadError("Таблиця кодів не задає повне префіксне дерево")
+        raise CodeError("Таблиця кодів не задає повне префіксне дерево")
 
     ordered = sorted(
         lengths.items(),
@@ -288,7 +294,7 @@ def _canonical_codes(lengths):
         code <<= length - previous_length
 
         if code >= (1 << length):
-            raise PayloadError("Некоректна канонічна таблиця")
+            raise CodeError("Некоректна канонічна таблиця")
 
         codes[symbol] = (code, length)
 
@@ -404,7 +410,7 @@ def _decode_bitstream(bitstream, symbol_count, codes):
 # 6. СТИСНЕННЯ
 # ---------------------------------------------------------
 
-def compress(data, mode):
+def compress(data, mode, class_table=None):
     """
     Формує payload відповідно до FORMAT_SPEC_P3.md.
 
@@ -456,17 +462,21 @@ def compress(data, mode):
 
     table_nsym = len(table) // 2
 
-    header = struct.pack(
-        ">HBBHII",
-        record_count,
-        flags,
-        0,
-        table_nsym,
-        symbol_count,
-        len(bitstream)
-    )
+    tail = b""
+    if class_table is not None:
+        class_table = bytes(class_table)
+        if len(class_table) != record_count:
+            raise ValueError("class_table має містити по байту на запис")
+        flags |= FLAG_CLASS_TABLE
+        tail = class_table
 
-    return header + table + bitstream
+    # Порядок за специфікацією: record_count, flags, reserved, table_nsym,
+    # table, symbol_count, bitstream_len, bitstream, [class_table]
+    header = struct.pack(">HBBH", record_count, flags, 0, table_nsym)
+
+    return (header + table
+            + struct.pack(">II", symbol_count, len(bitstream))
+            + bitstream + tail)
 
 
 # ---------------------------------------------------------
@@ -486,18 +496,19 @@ def decompress(payload, mode):
     payload = bytes(payload)
     mode = _normalize_mode(mode)
 
-    # Фіксована частина заголовка payload — 14 байтів.
-    if len(payload) < 14:
+    # Початок payload: record_count, flags, reserved, table_nsym - 6 байтів.
+    if len(payload) < 6:
         raise PayloadError("Payload занадто короткий")
 
-    (
-        record_count,
-        flags,
-        reserved,
-        table_nsym,
-        symbol_count,
-        bitstream_len
-    ) = struct.unpack(">HBBHII", payload[:14])
+    record_count, flags, reserved, table_nsym = struct.unpack(">HBBH", payload[:6])
+
+    table_start = 6
+    table_end = table_start + table_nsym * 2
+
+    if table_end + 8 > len(payload):
+        raise PayloadError("Таблиця кодів виходить за межі payload")
+
+    symbol_count, bitstream_len = struct.unpack(">II", payload[table_end:table_end + 8])
 
     if reserved != 0:
         raise PayloadError("Поле reserved повинно дорівнювати нулю")
@@ -520,13 +531,8 @@ def decompress(payload, mode):
     if mode == MODE_HUFFMAN and is_raw:
         raise PayloadError("Payload не відповідає режиму HUFFMAN")
 
-    table_start = 14
-    table_end = table_start + table_nsym * 2
-
-    if table_end > len(payload):
-        raise PayloadError("Таблиця кодів виходить за межі payload")
-
     table_data = payload[table_start:table_end]
+    table_end += 8  # пропускаємо symbol_count і bitstream_len
     bitstream_end = table_end + bitstream_len
 
     if bitstream_end > len(payload):
@@ -576,7 +582,7 @@ def decompress(payload, mode):
                     raise PayloadError("Символи таблиці мають бути унікальними та відсортованими")
 
                 if not 1 <= length <= MAX_CODE_LENGTH:
-                    raise PayloadError("Довжина коду має бути від 1 до 15")
+                    raise CodeError("Довжина коду має бути від 1 до 15")
 
                 lengths[symbol] = length
                 previous_symbol = symbol
@@ -591,3 +597,4 @@ def decompress(payload, mode):
         raise PayloadError("Кількість відновлених байтів не збігається з symbol_count")
 
     return result
+
