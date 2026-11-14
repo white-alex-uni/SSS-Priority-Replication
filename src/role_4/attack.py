@@ -5,6 +5,9 @@ from src.role_4.genetic import sort_best, tournament
 
 
 def weak_encrypt(data, key):
+    if len(key) == 0:
+        raise ValueError("Key must not be empty")
+
     result = bytearray()
     for i in range(len(data)):
         position = i % len(key)
@@ -42,7 +45,17 @@ def make_guess(key, ciphertext):
     return guess
 
 
-def attack_key(ciphertext, key_size, population=60, generations=80, mut_rate=0.3, elite=2, seed=1):
+def attack_key(ciphertext, key_size, population=None, generations=None, mut_rate=None, elite=2, seed=1):
+    if population is None:
+        population = 60 + 30 * key_size
+    if generations is None:
+        generations = 60 + 20 * key_size
+    if mut_rate is None:
+        if key_size <= 3:
+            mut_rate = 0.3
+        else:
+            mut_rate = 1.0 / key_size + 0.05
+
     rng = random.Random(seed)
     evals = 0
 
@@ -129,6 +142,30 @@ def tamper_test(header, payload, password, salt, nonce):
         bad_mac = flip_byte(mac, i)
         try:
             verify_and_decrypt(header, cipher_text, bad_mac, password, salt, nonce)
+            accepted = accepted + 1
+        except ReplicaAuthError:
+            pass
+
+    if len(cipher_text) > 0:
+        total = total + 1
+        try:
+            verify_and_decrypt(header, cipher_text[:-1], mac, password, salt, nonce)
+            accepted = accepted + 1
+        except ReplicaAuthError:
+            pass
+
+    total = total + 1
+    try:
+        verify_and_decrypt(header, cipher_text + bytes([0]), mac, password, salt, nonce)
+        accepted = accepted + 1
+    except ReplicaAuthError:
+        pass
+
+    for i in range(len(salt)):
+        total = total + 1
+        bad_salt = flip_byte(salt, i)
+        try:
+            verify_and_decrypt(header, cipher_text, mac, password, bad_salt, nonce)
             accepted = accepted + 1
         except ReplicaAuthError:
             pass

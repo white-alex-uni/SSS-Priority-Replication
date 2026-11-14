@@ -15,15 +15,26 @@ class ReplicaAuthError(ValueError):
     code = "E_HMAC"
 
 
+class ReplicaLengthError(ReplicaAuthError):
+    code = "E_LENGTH"
+
+
+def get_bytes(password):
+    if isinstance(password, bytes):
+        return password
+    return password.encode("utf-8")
+
+
 def derive_keys(password, salt):
     if len(salt) != SALT_SIZE:
         raise ValueError("Salt must be 16 bytes")
 
-    name = password + salt.hex()
+    password_bytes = get_bytes(password)
+    name = password_bytes.hex() + salt.hex()
     if name in cache:
         return cache[name]
 
-    master = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), salt, ITERATIONS, 64)
+    master = hashlib.pbkdf2_hmac("sha256", password_bytes, salt, ITERATIONS, 64)
     key_enc = master[0:32]
     key_mac = master[32:64]
 
@@ -58,11 +69,11 @@ def encrypt_and_mac(header, payload, password, salt, nonce):
 
 def verify_and_decrypt(header, ciphertext, mac, password, salt, nonce):
     if len(salt) != SALT_SIZE:
-        raise ReplicaAuthError("Bad salt size")
+        raise ReplicaLengthError("Bad salt size")
     if len(nonce) != NONCE_SIZE:
-        raise ReplicaAuthError("Bad nonce size")
+        raise ReplicaLengthError("Bad nonce size")
     if len(mac) != MAC_SIZE:
-        raise ReplicaAuthError("Bad mac size")
+        raise ReplicaLengthError("Bad mac size")
 
     key_enc, key_mac = derive_keys(password, salt)
     real_mac = calc_mac(key_mac, header, ciphertext)

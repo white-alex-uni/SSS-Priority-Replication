@@ -1,6 +1,6 @@
 import random
 
-from src.role_4.genetic import random_params, crossover, mutate
+from src.role_4.genetic import check_config, random_params, crossover, mutate
 
 
 def dominates(goals_a, goals_b):
@@ -21,15 +21,17 @@ def dominates(goals_a, goals_b):
     return better
 
 
-def make_item(params, eval_multi):
+def get_weights(config):
+    if "weights" in config:
+        return config["weights"]
+    return {"S": 1.0, "R": 1.0, "T": 1.0}
+
+
+def make_item(params, eval_multi, weights):
     goals = eval_multi(params.copy())
-    item = {"params": params, "goals": goals, "rank": 0}
+    score = goals["S"] * weights["S"] + goals["R"] * weights["R"] + goals["T"] * weights["T"]
+    item = {"params": params, "goals": goals, "score": score, "rank": 0}
     return item
-
-
-def total_goals(item):
-    goals = item["goals"]
-    return goals["S"] + goals["R"] + goals["T"]
 
 
 def set_ranks(items):
@@ -46,7 +48,7 @@ def is_better(item_a, item_b):
         return True
     if item_a["rank"] > item_b["rank"]:
         return False
-    if total_goals(item_a) > total_goals(item_b):
+    if item_a["score"] > item_b["score"]:
         return True
     return False
 
@@ -75,29 +77,31 @@ def pick_winner(items, size, rng):
 
 
 def get_front(items):
-    set_ranks(items)
     front = []
     for item in items:
-        if item["rank"] == 0:
+        dominated = False
+        for other in items:
+            if dominates(other["goals"], item["goals"]):
+                dominated = True
+        if not dominated:
             front.append(item)
     return front
 
 
 def run_pareto(eval_multi, config):
+    check_config(config)
     rng = random.Random(config["seed"])
     size = config["population"]
     elite = config["elite"]
     rate = config["mut_rate"]
-
-    if elite >= size:
-        raise ValueError("Elite must be smaller than population")
+    weights = get_weights(config)
 
     evals = 0
     archive = []
     items = []
     for i in range(size):
         params = random_params(config, rng)
-        item = make_item(params, eval_multi)
+        item = make_item(params, eval_multi, weights)
         evals = evals + 1
         items.append(item)
         archive.append(item)
@@ -118,7 +122,7 @@ def run_pareto(eval_multi, config):
             dad = pick_winner(items, config["tournament"], rng)
             child = crossover(mom["params"], dad["params"], config, rng)
             child = mutate(child, config, rng, rate)
-            item = make_item(child, eval_multi)
+            item = make_item(child, eval_multi, weights)
             evals = evals + 1
             new_items.append(item)
             archive.append(item)
@@ -138,11 +142,12 @@ def run_pareto(eval_multi, config):
 
 def run_random_front(eval_multi, config, evals):
     rng = random.Random(config["seed"] + 1)
+    weights = get_weights(config)
     archive = []
 
     for i in range(evals):
         params = random_params(config, rng)
-        item = make_item(params, eval_multi)
+        item = make_item(params, eval_multi, weights)
         archive.append(item)
 
     result = {}

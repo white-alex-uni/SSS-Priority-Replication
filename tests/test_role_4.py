@@ -11,7 +11,7 @@ sys.path.insert(0, ROOT)
 
 from src.role_4.attack import attack_key, tamper_test, weak_decrypt, weak_encrypt
 from src.role_4.crypto import ReplicaAuthError, derive_keys, encrypt_and_mac, verify_and_decrypt
-from src.role_4.fitness import make_config
+from src.role_4.fitness import Fitness, is_bad, make_config
 from src.role_4.genetic import (
     ADVANCED_CONFIG,
     DEFAULT_CONFIG,
@@ -19,7 +19,7 @@ from src.role_4.genetic import (
     elitism_ok,
     run_genetic_optimizer,
 )
-from src.role_4.pareto import compare_front, dominates, front_is_clean
+from src.role_4.pareto import compare_front, dominates, front_is_clean, get_front
 
 PASSWORD = "algo2026"
 SALT = bytes(range(16))
@@ -49,6 +49,7 @@ def test_bad_salt_size():
 def test_counter_starts_from_one():
     key_enc, key_mac = derive_keys(PASSWORD, SALT)
     cipher_text, mac = encrypt_and_mac(HEADER, bytes(40), PASSWORD, SALT, NONCE)
+    assert len(mac) == 32
 
     worker = Cipher(algorithms.AES(key_enc), modes.ECB()).encryptor()
     gamma = b""
@@ -110,7 +111,7 @@ def test_error_code():
 
 def test_every_changed_byte_is_rejected():
     result = tamper_test(HEADER, PAYLOAD, PASSWORD, SALT, NONCE)
-    assert result["total"] == len(HEADER) + len(PAYLOAD) + 32
+    assert result["total"] == len(HEADER) + len(PAYLOAD) + 32 + 1 + 1 + 16
     assert result["accepted"] == 0
     assert result["rejected"] == result["total"]
 
@@ -274,6 +275,114 @@ def test_third_copy_is_not_less_than_second():
     }
     config = make_config(base, {"second_copy": 1.95})
     assert config["реплікація"]["third_copy_factor"] == 1.95
+
+
+def test_length_error_code():
+    cipher_text, mac = encrypt_and_mac(HEADER, PAYLOAD, PASSWORD, SALT, NONCE)
+    with pytest.raises(ReplicaAuthError) as info:
+        verify_and_decrypt(HEADER, cipher_text, mac[:-1], PASSWORD, SALT, NONCE)
+    assert info.value.code == "E_LENGTH"
+
+
+def test_bytes_password_gives_same_keys():
+    from_text = derive_keys("algo2026", SALT)
+    from_bytes = derive_keys(b"algo2026", SALT)
+    assert from_text == from_bytes
+
+
+def test_empty_weak_key():
+    with pytest.raises(ValueError):
+        weak_encrypt(b"abc", b"")
+
+
+def test_bad_ga_config():
+    config = dict(DEFAULT_CONFIG)
+    config["population"] = 1
+    config["elite"] = 0
+    with pytest.raises(ValueError):
+        run_genetic_optimizer(toy_fitness, config)
+
+    config = dict(DEFAULT_CONFIG)
+    config["tournament"] = 0
+    with pytest.raises(ValueError):
+        run_genetic_optimizer(toy_fitness, config)
+
+
+def test_get_front_does_not_change_ranks():
+    items = []
+    items.append({"goals": {"S": 1, "R": 1, "T": 1}, "rank": 7})
+    items.append({"goals": {"S": 2, "R": 2, "T": 2}, "rank": 8})
+    front = get_front(items)
+    assert len(front) == 1
+    assert front[0]["goals"]["S"] == 2
+    assert items[0]["rank"] == 7
+    assert items[1]["rank"] == 8
+
+
+def test_unknown_parameter_name():
+    base = {
+        "реплікація": {
+            "replication_window_records": 48,
+            "replication_budget_bits": 5000,
+            "second_copy_factor": 1.55,
+            "third_copy_factor": 1.85,
+        },
+        "пріоритети_класів": {"аномальна подія": 5, "перехід до інциденту": 4},
+        "critical_bonus": 5,
+    }
+    with pytest.raises(ValueError):
+        make_config(base, {"windowsize": 24})
+
+
+def test_third_extra_is_added_to_second():
+    base = {
+        "реплікація": {
+            "replication_window_records": 48,
+            "replication_budget_bits": 5000,
+            "second_copy_factor": 1.55,
+            "third_copy_factor": 1.85,
+        },
+        "пріоритети_класів": {"аномальна подія": 5, "перехід до інциденту": 4},
+        "critical_bonus": 5,
+    }
+    config = make_config(base, {"second_copy": 1.2, "third_extra": 0.5})
+    assert config["реплікація"]["second_copy_factor"] == 1.2
+    assert abs(config["реплікація"]["third_copy_factor"] - 1.7) < 0.000001
+
+
+def test_is_bad_uses_loss_limits():
+    limits = {"штатний": 0.0, "деградований": 0.1, "аварійний": 0.45}
+    assert not is_bad("штатний", {"R": 1.0}, limits)
+    assert is_bad("штатний", {"R": 0.99}, limits)
+    assert not is_bad("деградований", {"R": 0.9}, limits)
+    assert is_bad("деградований", {"R": 0.85}, limits)
+    assert not is_bad("аварійний", {"R": 0.6}, limits)
+    assert is_bad("аварійний", {"R": 0.5}, limits)
+    assert not is_bad("інший", {"R": 0.0}, limits)
+
+
+def test_fitness_with_real_pipeline():
+    config_path = os.path.join(ROOT, "team_config.json")
+    if not os.path.exists(config_path):
+        pytest.skip("team_config.json is not in the repo root")
+
+    fit = Fitness("team_config.json", "data/session.csv", ["аварійний"])
+    params = {"window_size": 48, "budget_bits": 5000, "second_copy": 1.55}
+    first = fit.q_fixed(params)
+    second = fit.q_fixed(params)
+    assert first == second
+    assert first > 0.0
+    assert first < 1.0
+
+
+def test_attack_finds_longer_keys():
+    text = (b"the quick brown fox jumps over the lazy dog and the node "
+            b"keeps sending log events to the central storage every second "
+            b"so we can restore all critical records after a failure ") * 3
+    for key in [b"Zq9r1x", b"a1B2c3D4"]:
+        cipher_text = weak_encrypt(text, key)
+        result = attack_key(cipher_text, len(key))
+        assert result["key"] == key
 
 
 def test_attack_finds_weak_key():

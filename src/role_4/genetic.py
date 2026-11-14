@@ -2,15 +2,15 @@ import random
 
 BASIC_LIMITS = {
     "window_size": {"low": 12, "high": 96, "whole": True},
-    "budget_bits": {"low": 1500, "high": 12000, "whole": True},
+    "budget_bits": {"low": 500, "high": 12000, "whole": True},
     "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
 }
 
 ADVANCED_LIMITS = {
     "window_size": {"low": 12, "high": 96, "whole": True},
-    "budget_bits": {"low": 1500, "high": 12000, "whole": True},
+    "budget_bits": {"low": 500, "high": 12000, "whole": True},
     "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
-    "third_copy": {"low": 1.0, "high": 3.0, "whole": False},
+    "third_extra": {"low": 0.0, "high": 1.0, "whole": False},
     "prio_anomaly": {"low": 1, "high": 10, "whole": True},
     "prio_incident": {"low": 1, "high": 10, "whole": True},
     "critical_bonus": {"low": 0, "high": 15, "whole": True},
@@ -41,6 +41,17 @@ ADVANCED_CONFIG = {
     "adaptive": True,
     "local_rounds": 3,
 }
+
+
+def check_config(config):
+    if config["population"] < 2:
+        raise ValueError("Population must be at least 2")
+    if config["elite"] >= config["population"]:
+        raise ValueError("Elite must be smaller than population")
+    if config["tournament"] < 1:
+        raise ValueError("Tournament must be at least 1")
+    if config["generations"] < 0:
+        raise ValueError("Generations must not be negative")
 
 
 def fix_gene(value, limit):
@@ -189,13 +200,11 @@ def local_search(person, eval_fn, config):
 
 
 def run_genetic_optimizer(eval_fn, config):
+    check_config(config)
     rng = random.Random(config["seed"])
     size = config["population"]
     elite = config["elite"]
     rate = config["mut_rate"]
-
-    if elite >= size:
-        raise ValueError("Elite must be smaller than population")
 
     evals = 0
     people = []
@@ -353,7 +362,7 @@ def save_plot(comparison, path):
     plt.plot(ga["eval_history"], ga["mean_history"], linestyle="--", label="GA mean")
     plt.plot(random_x, rs["best_history"], label="Random Search best")
     plt.xlabel("Fitness evaluations")
-    plt.ylabel("Fitness (Q)")
+    plt.ylabel("Fitness (0.35*S + 0.5*R)")
     plt.legend()
     plt.grid(True)
     plt.savefig(path, dpi=150, bbox_inches="tight")
