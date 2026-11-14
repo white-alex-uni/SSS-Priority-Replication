@@ -1,21 +1,12 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-scheduler.py — модуль планування відправки подій (Роль 3).
-Реалізує точний контракт API (select_copies_dp та schedule_batches),
-жадібний baseline та обчислення вартості/корисності згідно з team_config.json (T01).
-"""
-
 from typing import List, Dict, Any, Tuple, Optional
 
 MAX_COPIES = 3
 EVENT_SIZE_BYTES = 16
 
-# Базові константи згідно з team_config.json (команда T01, узгоджено з Роллю 1)
 DEFAULT_CLASS_PRIORITY: Dict[int, float] = {
-    0: 1.0,  # штатна подія
-    1: 5.0,  # аномальна подія
-    2: 4.0,  # перехід до інциденту
+    0: 1.0, 
+    1: 5.0, 
+    2: 4.0,
 }
 DEFAULT_CRITICAL_BONUS: float = 5.0
 DEFAULT_COPY_MULTIPLIERS: Dict[int, float] = {
@@ -31,14 +22,7 @@ def build_costs_and_utilities(
     classes: Optional[List[int]] = None,
     team_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[List[List[int]], List[List[float]]]:
-    """
-    Обчислює вартість cost_i(r) = r * w_i та корисність u_i(r) для r in {0, 1, 2, 3}.
     
-    :param events: Список подій (LogRecord).
-    :param classes: Список класів (0, 1, 2) від Ролі 1 (predict_classes). Якщо None — береться event.label.
-    :param team_config: Конфігурація з team_config.json.
-    :return: (weights, utilities) розміром n x 4.
-    """
     cfg = team_config or {}
     class_prio_map = cfg.get("class_priority", DEFAULT_CLASS_PRIORITY)
     critical_bonus = float(cfg.get("critical_bonus", DEFAULT_CRITICAL_BONUS))
@@ -48,14 +32,11 @@ def build_costs_and_utilities(
     utilities: List[List[float]] = []
 
     for idx, event in enumerate(events):
-        # Визначаємо клас події (пріоритет — передбачений клас від Ролі 1)
         if classes is not None and idx < len(classes):
             cls_id = int(classes[idx])
         else:
             raw_label = getattr(event, "label", 0)
             cls_id = int(raw_label) if raw_label is not None else 0
-
-        # Базова цінність за формулою v_i = priority(class_i) + critical_bonus * [critical_i == 1]
         base_priority = float(class_prio_map.get(cls_id, class_prio_map.get(str(cls_id), 1.0)))
         if int(getattr(event, "critical", 0) or 0) == 1:
             base_priority += critical_bonus
@@ -83,10 +64,6 @@ def select_copies_dp(
     utilities: List[List[float]],
     budget_W: int,
 ) -> List[int]:
-    """
-    Визначає оптимальну кількість копій (0..3) для кожної події за допомогою 
-    динамічного програмування (багатоваріантний рюкзак, складність O(n * W * R_max)).
-    """
     n = len(events)
     if n == 0:
         return []
@@ -127,10 +104,7 @@ def select_copies_greedy(
     utilities: List[List[float]],
     budget_W: int,
 ) -> List[int]:
-    """
-    Жадібний baseline для вибору кількості копій (для порівняння з ДП у звіті та Кейсі №6).
-    На кожному кроці додає копію події з максимальним відношенням Δu / Δcost.
-    """
+    
     n = len(events)
     if n == 0 or budget_W <= 0:
         return [0] * n
@@ -172,12 +146,7 @@ def schedule_batches(
     node_configs: Dict[str, Any],
     max_batch_bytes: int,
 ) -> Dict[str, List[Any]]:
-    """
-    Жадібний розподіл копій по вузлах (A, B, C):
-    - Сортує події за важливістю (критичні йдуть першими).
-    - Кладе копії однієї події суворо на РІЗНІ вузли.
-    - Враховує reliability_weight вузлів, max_batch_bytes та залишкову місткість вузла.
-    """
+
     batches: Dict[str, List[Any]] = {node_id: [] for node_id in node_configs.keys()}
     if not node_configs or not events:
         return batches
@@ -227,7 +196,6 @@ def _event_importance_weights(
     classes: Optional[List[int]] = None,
     team_config: Optional[Dict[str, Any]] = None,
 ) -> List[float]:
-    """Допоміжна функція: обчислює вагу важливості w_k кожної події для оцінки ризику втрати."""
     cfg = team_config or {}
     class_prio_map = cfg.get("class_priority", DEFAULT_CLASS_PRIORITY)
     critical_bonus = float(cfg.get("critical_bonus", DEFAULT_CRITICAL_BONUS))
@@ -254,12 +222,6 @@ def optimize_checkpoints_dp(
     fail_prob: float = 0.15,
     team_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[float, List[int]]:
-    """
-    Задача Б (Просунутий рівень): оптимальні контрольні точки журналу (snapshots) через ДП.
-    F[j] = min_{i < j} (F[i] + Snapshot(i, j) + RecoveryCost(i, j)), складність O(N^2).
-
-    :return: (мінімальна сумарна вартість F[N], список індексів контрольних точок).
-    """
     n = len(events)
     if n == 0:
         return 0.0, []
@@ -272,7 +234,6 @@ def optimize_checkpoints_dp(
     F[0] = 0.0
 
     for j in range(1, n + 1):
-        # Накопичуємо суму w[k] * (j - k) при русі i від j-1 до 0 за O(1) на крок
         weighted_delay_sum = 0.0
         for i in range(j - 1, -1, -1):
             weighted_delay_sum += w[i] * (j - i)
@@ -283,7 +244,6 @@ def optimize_checkpoints_dp(
                 F[j] = total_cost
                 prev_idx[j] = i
 
-    # Відновлення індексів контрольних точок
     checkpoints: List[int] = []
     curr = n
     while curr > 0:
@@ -302,10 +262,6 @@ def evaluate_fixed_checkpoints(
     fail_prob: float = 0.15,
     team_config: Optional[Dict[str, Any]] = None,
 ) -> Tuple[float, List[int]]:
-    """
-    Baseline для Задачі Б: розставляє контрольні точки з фіксованим кроком `step`
-    і рахує вартість за тією ж цільовою функцією для порівняння з ДП.
-    """
     n = len(events)
     if n == 0:
         return 0.0, []
@@ -333,24 +289,20 @@ if __name__ == "__main__":
     import time
     from pathlib import Path
 
-    # Додаємо корінь проєкту в sys.path для імпорту пакету role_1
     project_root = Path(__file__).resolve().parents[2]
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
 
     from src.role_1 import load_csv, predict_classes
 
-    # 1. Завантажуємо дані Ролі 1 (session.csv або valid.csv)
     data_dir = project_root / "data"
     dataset_path = data_dir / "session.csv" if (data_dir / "session.csv").exists() else data_dir / "valid.csv"
     all_records = load_csv(dataset_path)
     print(f"Завантажено {len(all_records)} записів із {dataset_path.name}")
 
-    # Розбиваємо на 5 вікон по 48 записів (240 подій) для експерименту
     window_size = 48
     windows = [all_records[i : i + window_size] for i in range(0, min(len(all_records), 240), window_size)]
 
-    # Конфігурація вузлів A, B, C (штатний режим)
     nodes_normal = {
         "Node_A": {"reliability_weight": 0.99, "remaining_capacity": 2000},
         "Node_B": {"reliability_weight": 0.90, "remaining_capacity": 2000},
@@ -358,9 +310,6 @@ if __name__ == "__main__":
     }
     max_batch = 1024
 
-    # =========================================================================
-    # ТАБЛИЦЯ 1: «ДП проти жадібного» (перевірка Кейсу C1 №6)
-    # =========================================================================
     print("\n=== ТАБЛИЦЯ 1: ДП ПРОТИ ЖАДІБНОГО BASELINE (усереднено по вікнах) ===")
     print(f"{'Бюджет W (байт)':<18} | {'U (ДП)':<10} | {'U (Жадіб.)':<12} | {'Час ДП (мс)':<12} | {'Кейс №6 (U_dp >= U_gr)'}")
     print("-" * 78)
@@ -392,9 +341,6 @@ if __name__ == "__main__":
         status = "PASS" if case_6_ok else "FAIL"
         print(f"{budget_W:<18} | {total_u_dp/n_win:<10.2f} | {total_u_gr/n_win:<12.2f} | {total_time_dp/n_win:<12.3f} | {status}")
 
-    # =========================================================================
-    # ТАБЛИЦЯ 2: «Вплив кількості копій (1/2/3) на S, R, Q» (Кейси C1 №7 та №8)
-    # =========================================================================
     print("\n=== ТАБЛИЦЯ 2: ВПЛИВ КІЛЬКОСТІ КОПІЙ (r = 1, 2, 3) НА S, R, Q ===")
     print(f"{'Режим (r)':<12} | {'S (байт)':<10} | {'R_norm (Кейс №7)':<18} | {'R_degr (Кейс №8)':<18} | {'Q (Корисність)'}")
     print("-" * 82)
@@ -428,10 +374,7 @@ if __name__ == "__main__":
         r_norm_pct = (crit_rec_normal / crit_total * 100.0) if crit_total else 100.0
         r_degr_pct = (crit_rec_degraded / crit_total * 100.0) if crit_total else 100.0
         print(f"r = {r_fixed:<8} | {tot_S/n_win:<10.0f} | {r_norm_pct:>6.1f}% ({crit_rec_normal}/{crit_total}) | {r_degr_pct:>6.1f}% ({crit_rec_degraded}/{crit_total}) | {tot_Q/n_win:<10.2f}")
-        
-        # =========================================================================
-    # ТАБЛИЦЯ 3: ЗАДАЧА Б — ОПТИМАЛЬНІ КОНТРОЛЬНІ ТОЧКИ (DP ПРОТИ ФІКСОВАНОГО КРОКУ)
-    # =========================================================================
+
     print("\n=== ТАБЛИЦЯ 3: ЗАДАЧА Б — SNAPSHOTS (ДП ПРОТИ ФІКСОВАНОГО КРОКУ) ===")
     print(f"{'Фікс. крок K':<14} | {'Вартість Фікс.':<16} | {'Вартість ДП':<14} | {'Економія (%)':<14} | {'Перевірка (DP <= Fixed)'}")
     print("-" * 82)
