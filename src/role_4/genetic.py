@@ -1,21 +1,21 @@
 import random
 
 BASIC_LIMITS = {
-    "window_size": [20, 300, True],
-    "threshold": [0.5, 1.0, False],
-    "second_copy": [1.0, 2.0, False],
+    "window_size": {"low": 20, "high": 300, "whole": True},
+    "threshold": {"low": 0.5, "high": 1.0, "whole": False},
+    "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
 }
 
 ADVANCED_LIMITS = {
-    "window_size": [20, 300, True],
-    "threshold": [0.5, 1.0, False],
-    "second_copy": [1.0, 2.0, False],
-    "third_copy": [1.0, 3.0, False],
-    "hidden_1": [8, 48, True],
-    "hidden_2": [4, 24, True],
-    "weight_class": [0.5, 3.0, False],
-    "weight_critical": [0.5, 3.0, False],
-    "max_copies": [1, 3, True],
+    "window_size": {"low": 20, "high": 300, "whole": True},
+    "threshold": {"low": 0.5, "high": 1.0, "whole": False},
+    "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
+    "third_copy": {"low": 1.0, "high": 3.0, "whole": False},
+    "hidden_1": {"low": 8, "high": 48, "whole": True},
+    "hidden_2": {"low": 4, "high": 24, "whole": True},
+    "weight_class": {"low": 0.5, "high": 3.0, "whole": False},
+    "weight_critical": {"low": 0.5, "high": 3.0, "whole": False},
+    "max_copies": {"low": 1, "high": 3, "whole": True},
 }
 
 DEFAULT_CONFIG = {
@@ -46,16 +46,12 @@ ADVANCED_CONFIG = {
 
 
 def fix_gene(value, limit):
-    low = limit[0]
-    high = limit[1]
-    whole = limit[2]
+    if value < limit["low"]:
+        value = limit["low"]
+    if value > limit["high"]:
+        value = limit["high"]
 
-    if value < low:
-        value = low
-    if value > high:
-        value = high
-
-    if whole:
+    if limit["whole"]:
         value = int(round(value))
     return value
 
@@ -65,7 +61,7 @@ def random_params(config, rng):
     params = {}
     for name in limits:
         limit = limits[name]
-        value = rng.uniform(limit[0], limit[1])
+        value = rng.uniform(limit["low"], limit["high"])
         params[name] = fix_gene(value, limit)
     return params
 
@@ -126,8 +122,8 @@ def mutate(params, config, rng, rate):
     for name in limits:
         if rng.random() < rate:
             limit = limits[name]
-            step = (limit[1] - limit[0]) * 0.1
-            if limit[2] and step < 1:
+            step = (limit["high"] - limit["low"]) * 0.1
+            if limit["whole"] and step < 1:
                 step = 1
             value = result[name] + rng.gauss(0, step)
             result[name] = fix_gene(value, limit)
@@ -147,6 +143,12 @@ def next_rate(rate, improved):
     return rate
 
 
+def try_value(best, name, new_value, eval_fn):
+    params = best["params"].copy()
+    params[name] = new_value
+    return make_person(params, eval_fn)
+
+
 def local_search(person, eval_fn, config):
     limits = config["limits"]
     best = person
@@ -157,28 +159,25 @@ def local_search(person, eval_fn, config):
 
         for name in limits:
             limit = limits[name]
-            step = (limit[1] - limit[0]) * 0.05
-            if limit[2] and step < 1:
+            step = (limit["high"] - limit["low"]) * 0.05
+            if limit["whole"] and step < 1:
                 step = 1
 
             value = best["params"][name]
+            up_value = fix_gene(value + step, limit)
+            down_value = fix_gene(value - step, limit)
+            up_better = False
 
-            up = fix_gene(value + step, limit)
-            if up != value:
-                params = best["params"].copy()
-                params[name] = up
-                candidate = make_person(params, eval_fn)
+            if up_value != value:
+                candidate = try_value(best, name, up_value, eval_fn)
                 evals = evals + 1
                 if candidate["fitness"] > best["fitness"]:
                     best = candidate
                     found = True
-                    continue
+                    up_better = True
 
-            down = fix_gene(value - step, limit)
-            if down != value:
-                params = best["params"].copy()
-                params[name] = down
-                candidate = make_person(params, eval_fn)
+            if down_value != value and not up_better:
+                candidate = try_value(best, name, down_value, eval_fn)
                 evals = evals + 1
                 if candidate["fitness"] > best["fitness"]:
                     best = candidate
@@ -187,7 +186,8 @@ def local_search(person, eval_fn, config):
         if not found:
             break
 
-    return best, evals
+    result = {"best": best, "evals": evals}
+    return result
 
 
 def run_genetic_optimizer(eval_fn, config):
@@ -245,8 +245,9 @@ def run_genetic_optimizer(eval_fn, config):
 
     if config["local_rounds"] > 0:
         before = best["fitness"]
-        best, local_evals = local_search(best, eval_fn, config)
-        evals = evals + local_evals
+        local = local_search(best, eval_fn, config)
+        best = local["best"]
+        evals = evals + local["evals"]
         local_gain = best["fitness"] - before
         best_history.append(best["fitness"])
         mean_history.append(mean_fitness(people))
@@ -320,19 +321,20 @@ def save_csv(comparison, path):
     rs = comparison["random"]
 
     file = open(path, "w", encoding="utf-8")
-    file.write("step,evals,ga_best,ga_mean,random_best,mut_rate\n")
+    print("step,evals,ga_best,ga_mean,random_best,mut_rate", file=file)
+
     for step in range(len(ga["best_history"])):
         evals = ga["eval_history"][step]
         random_best = rs["best_history"][evals - 1]
-        line = "%d,%d,%.6f,%.6f,%.6f,%.3f\n" % (
-            step,
-            evals,
-            ga["best_history"][step],
-            ga["mean_history"][step],
-            random_best,
-            ga["rate_history"][step],
-        )
-        file.write(line)
+
+        line = str(step) + ","
+        line = line + str(evals) + ","
+        line = line + str(round(ga["best_history"][step], 6)) + ","
+        line = line + str(round(ga["mean_history"][step], 6)) + ","
+        line = line + str(round(random_best, 6)) + ","
+        line = line + str(round(ga["rate_history"][step], 3))
+        print(line, file=file)
+
     file.close()
 
 
@@ -354,7 +356,6 @@ def save_plot(comparison, path):
     plt.plot(random_x, rs["best_history"], label="Random Search best")
     plt.xlabel("Fitness evaluations")
     plt.ylabel("Fitness (Q)")
-    plt.title("GA vs Random Search")
     plt.legend()
     plt.grid(True)
     plt.savefig(path, dpi=150, bbox_inches="tight")

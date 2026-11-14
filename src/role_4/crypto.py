@@ -34,7 +34,7 @@ def derive_keys(password, salt):
 
 
 def aes_ctr(key_enc, nonce, data):
-    counter = nonce + (1).to_bytes(4, "big")
+    counter = nonce + bytes([0, 0, 0, 1])
     cipher = Cipher(algorithms.AES(key_enc), modes.CTR(counter))
     worker = cipher.encryptor()
     result = worker.update(data) + worker.finalize()

@@ -78,7 +78,7 @@ def attack_key(ciphertext, key_size, population=60, generations=80, mut_rate=0.3
                         child[j] = rng.randrange(256)
                     else:
                         bit = rng.randrange(8)
-                        child[j] = child[j] ^ (1 << bit)
+                        child[j] = child[j] ^ (2 ** bit)
 
             new_guesses.append(make_guess(child, ciphertext))
             evals = evals + 1
