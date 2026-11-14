@@ -18,15 +18,16 @@ GA_SEEDS = [42, 43]
 
 def make_run_config(seed):
     config = dict(ADVANCED_CONFIG)
-    config["population"] = 12
-    config["generations"] = 8
+    config["population"] = 10
+    config["generations"] = 5
+    config["local_rounds"] = 2
     config["seed"] = seed
     return config
 
 
 def get_fit_seeds(config):
     open_seed = config["реплікація"]["seed_моделі_реплікації"]
-    return [open_seed, FIT_SEED_2]
+    return [open_seed]
 
 
 def base_params(config):
