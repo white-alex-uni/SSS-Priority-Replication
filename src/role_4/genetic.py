@@ -1,21 +1,19 @@
 import random
 
 BASIC_LIMITS = {
-    "window_size": {"low": 20, "high": 300, "whole": True},
-    "threshold": {"low": 0.5, "high": 1.0, "whole": False},
+    "window_size": {"low": 12, "high": 96, "whole": True},
+    "budget_bits": {"low": 1500, "high": 12000, "whole": True},
     "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
 }
 
 ADVANCED_LIMITS = {
-    "window_size": {"low": 20, "high": 300, "whole": True},
-    "threshold": {"low": 0.5, "high": 1.0, "whole": False},
+    "window_size": {"low": 12, "high": 96, "whole": True},
+    "budget_bits": {"low": 1500, "high": 12000, "whole": True},
     "second_copy": {"low": 1.0, "high": 2.0, "whole": False},
     "third_copy": {"low": 1.0, "high": 3.0, "whole": False},
-    "hidden_1": {"low": 8, "high": 48, "whole": True},
-    "hidden_2": {"low": 4, "high": 24, "whole": True},
-    "weight_class": {"low": 0.5, "high": 3.0, "whole": False},
-    "weight_critical": {"low": 0.5, "high": 3.0, "whole": False},
-    "max_copies": {"low": 1, "high": 3, "whole": True},
+    "prio_anomaly": {"low": 1, "high": 10, "whole": True},
+    "prio_incident": {"low": 1, "high": 10, "whole": True},
+    "critical_bonus": {"low": 0, "high": 15, "whole": True},
 }
 
 DEFAULT_CONFIG = {
