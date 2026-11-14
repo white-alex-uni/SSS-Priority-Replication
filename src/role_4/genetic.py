@@ -1,6 +1,25 @@
 import random
 
+BASIC_LIMITS = {
+    "window_size": [20, 300, True],
+    "threshold": [0.5, 1.0, False],
+    "second_copy": [1.0, 2.0, False],
+}
+
+ADVANCED_LIMITS = {
+    "window_size": [20, 300, True],
+    "threshold": [0.5, 1.0, False],
+    "second_copy": [1.0, 2.0, False],
+    "third_copy": [1.0, 3.0, False],
+    "hidden_1": [8, 48, True],
+    "hidden_2": [4, 24, True],
+    "weight_class": [0.5, 3.0, False],
+    "weight_critical": [0.5, 3.0, False],
+    "max_copies": [1, 3, True],
+}
+
 DEFAULT_CONFIG = {
+    "limits": BASIC_LIMITS,
     "population": 20,
     "generations": 15,
     "tournament": 3,
@@ -8,29 +27,46 @@ DEFAULT_CONFIG = {
     "mut_rate": 0.2,
     "elite": 2,
     "seed": 42,
-    "window_low": 20,
-    "window_high": 300,
-    "thr_low": 0.5,
-    "thr_high": 1.0,
-    "copy_low": 0.0,
-    "copy_high": 1.0,
+    "adaptive": False,
+    "local_rounds": 0,
+}
+
+ADVANCED_CONFIG = {
+    "limits": ADVANCED_LIMITS,
+    "population": 20,
+    "generations": 15,
+    "tournament": 3,
+    "cross_rate": 0.8,
+    "mut_rate": 0.2,
+    "elite": 2,
+    "seed": 42,
+    "adaptive": True,
+    "local_rounds": 3,
 }
 
 
-def fix_value(value, low, high):
+def fix_gene(value, limit):
+    low = limit[0]
+    high = limit[1]
+    whole = limit[2]
+
     if value < low:
         value = low
     if value > high:
         value = high
+
+    if whole:
+        value = int(round(value))
     return value
 
 
 def random_params(config, rng):
+    limits = config["limits"]
     params = {}
-    window = rng.uniform(config["window_low"], config["window_high"])
-    params["window_size"] = int(round(window))
-    params["threshold"] = rng.uniform(config["thr_low"], config["thr_high"])
-    params["second_copy"] = rng.uniform(config["copy_low"], config["copy_high"])
+    for name in limits:
+        limit = limits[name]
+        value = rng.uniform(limit[0], limit[1])
+        params[name] = fix_gene(value, limit)
     return params
 
 
@@ -75,53 +111,90 @@ def crossover(mom, dad, config, rng):
         return mom.copy()
 
     child = {}
-
-    if rng.random() < 0.5:
-        child["window_size"] = mom["window_size"]
-    else:
-        child["window_size"] = dad["window_size"]
-
-    if rng.random() < 0.5:
-        child["threshold"] = mom["threshold"]
-    else:
-        child["threshold"] = dad["threshold"]
-
-    if rng.random() < 0.5:
-        child["second_copy"] = mom["second_copy"]
-    else:
-        child["second_copy"] = dad["second_copy"]
-
+    for name in config["limits"]:
+        if rng.random() < 0.5:
+            child[name] = mom[name]
+        else:
+            child[name] = dad[name]
     return child
 
 
-def mutate(params, config, rng):
+def mutate(params, config, rng, rate):
+    limits = config["limits"]
     result = params.copy()
 
-    if rng.random() < config["mut_rate"]:
-        step = (config["window_high"] - config["window_low"]) * 0.1
-        value = result["window_size"] + rng.gauss(0, step)
-        value = fix_value(value, config["window_low"], config["window_high"])
-        result["window_size"] = int(round(value))
-
-    if rng.random() < config["mut_rate"]:
-        step = (config["thr_high"] - config["thr_low"]) * 0.1
-        value = result["threshold"] + rng.gauss(0, step)
-        value = fix_value(value, config["thr_low"], config["thr_high"])
-        result["threshold"] = value
-
-    if rng.random() < config["mut_rate"]:
-        step = (config["copy_high"] - config["copy_low"]) * 0.1
-        value = result["second_copy"] + rng.gauss(0, step)
-        value = fix_value(value, config["copy_low"], config["copy_high"])
-        result["second_copy"] = value
+    for name in limits:
+        if rng.random() < rate:
+            limit = limits[name]
+            step = (limit[1] - limit[0]) * 0.1
+            if limit[2] and step < 1:
+                step = 1
+            value = result[name] + rng.gauss(0, step)
+            result[name] = fix_gene(value, limit)
 
     return result
+
+
+def next_rate(rate, improved):
+    if improved:
+        rate = rate * 0.8
+        if rate < 0.05:
+            rate = 0.05
+    else:
+        rate = rate * 1.5
+        if rate > 0.6:
+            rate = 0.6
+    return rate
+
+
+def local_search(person, eval_fn, config):
+    limits = config["limits"]
+    best = person
+    evals = 0
+
+    for round_number in range(config["local_rounds"]):
+        found = False
+
+        for name in limits:
+            limit = limits[name]
+            step = (limit[1] - limit[0]) * 0.05
+            if limit[2] and step < 1:
+                step = 1
+
+            value = best["params"][name]
+
+            up = fix_gene(value + step, limit)
+            if up != value:
+                params = best["params"].copy()
+                params[name] = up
+                candidate = make_person(params, eval_fn)
+                evals = evals + 1
+                if candidate["fitness"] > best["fitness"]:
+                    best = candidate
+                    found = True
+                    continue
+
+            down = fix_gene(value - step, limit)
+            if down != value:
+                params = best["params"].copy()
+                params[name] = down
+                candidate = make_person(params, eval_fn)
+                evals = evals + 1
+                if candidate["fitness"] > best["fitness"]:
+                    best = candidate
+                    found = True
+
+        if not found:
+            break
+
+    return best, evals
 
 
 def run_genetic_optimizer(eval_fn, config):
     rng = random.Random(config["seed"])
     size = config["population"]
     elite = config["elite"]
+    rate = config["mut_rate"]
 
     if elite >= size:
         raise ValueError("Elite must be smaller than population")
@@ -138,8 +211,10 @@ def run_genetic_optimizer(eval_fn, config):
     best_history = [people[0]["fitness"]]
     mean_history = [mean_fitness(people)]
     eval_history = [evals]
+    rate_history = [rate]
 
     for generation in range(config["generations"]):
+        old_best = people[0]["fitness"]
         new_people = []
 
         for i in range(elite):
@@ -149,22 +224,43 @@ def run_genetic_optimizer(eval_fn, config):
             mom = tournament(people, config["tournament"], rng)
             dad = tournament(people, config["tournament"], rng)
             child = crossover(mom["params"], dad["params"], config, rng)
-            child = mutate(child, config, rng)
+            child = mutate(child, config, rng, rate)
             person = make_person(child, eval_fn)
             evals = evals + 1
             new_people.append(person)
 
         people = sort_best(new_people)
+
+        if config["adaptive"]:
+            improved = people[0]["fitness"] > old_best
+            rate = next_rate(rate, improved)
+
         best_history.append(people[0]["fitness"])
         mean_history.append(mean_fitness(people))
         eval_history.append(evals)
+        rate_history.append(rate)
+
+    best = people[0]
+    local_gain = 0.0
+
+    if config["local_rounds"] > 0:
+        before = best["fitness"]
+        best, local_evals = local_search(best, eval_fn, config)
+        evals = evals + local_evals
+        local_gain = best["fitness"] - before
+        best_history.append(best["fitness"])
+        mean_history.append(mean_fitness(people))
+        eval_history.append(evals)
+        rate_history.append(rate)
 
     result = {}
-    result["best_params"] = people[0]["params"]
-    result["best_fitness"] = people[0]["fitness"]
+    result["best_params"] = best["params"]
+    result["best_fitness"] = best["fitness"]
     result["best_history"] = best_history
     result["mean_history"] = mean_history
     result["eval_history"] = eval_history
+    result["rate_history"] = rate_history
+    result["local_gain"] = local_gain
     result["evals"] = evals
     return result
 
@@ -224,16 +320,17 @@ def save_csv(comparison, path):
     rs = comparison["random"]
 
     file = open(path, "w", encoding="utf-8")
-    file.write("generation,evals,ga_best,ga_mean,random_best\n")
-    for gen in range(len(ga["best_history"])):
-        evals = ga["eval_history"][gen]
+    file.write("step,evals,ga_best,ga_mean,random_best,mut_rate\n")
+    for step in range(len(ga["best_history"])):
+        evals = ga["eval_history"][step]
         random_best = rs["best_history"][evals - 1]
-        line = "%d,%d,%.6f,%.6f,%.6f\n" % (
-            gen,
+        line = "%d,%d,%.6f,%.6f,%.6f,%.3f\n" % (
+            step,
             evals,
-            ga["best_history"][gen],
-            ga["mean_history"][gen],
+            ga["best_history"][step],
+            ga["mean_history"][step],
             random_best,
+            ga["rate_history"][step],
         )
         file.write(line)
     file.close()

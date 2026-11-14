@@ -12,7 +12,7 @@ cache = {}
 
 
 class ReplicaAuthError(ValueError):
-    pass
+    code = "E_HMAC"
 
 
 def derive_keys(password, salt):
