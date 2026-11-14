@@ -1,0 +1,15 @@
+Fitness: 0.35*S + 0.5*R minus penalty for runs over the loss limit of C1 cases 7 and 8
+Fitness runs: 3 scenarios x seeds [427243]
+GA seed: 43
+Population: 10
+Generations: 5
+Evaluations GA: 76
+Evaluations Random Search: 76
+Base config fitness: 0.52835
+GA best fitness: 0.55703
+Random Search best fitness: 0.56126
+Winner: RandomSearch
+Elitism is not worse than generation 0: True
+Local search gain: 0.01036
+Base params: window_size=48 budget_bits=5000 second_copy=1.55 third_extra=0.3 prio_anomaly=5 prio_incident=4 critical_bonus=5 
+GA params: window_size=94 budget_bits=3160 second_copy=1.6289 third_extra=0.8202 prio_anomaly=3 prio_incident=7 critical_bonus=12 
