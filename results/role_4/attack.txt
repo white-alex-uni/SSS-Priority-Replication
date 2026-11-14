@@ -1,0 +1,19 @@
+Part 1. GA attack on a weak cipher (XOR with a short repeating key)
+Real key: b'k3y'
+Found key: b'k3y'
+Fitness evaluations: 17910
+Result: key recovered
+Real key: b'Zq9r1x'
+Found key: b'Zq9r1x'
+Fitness evaluations: 43080
+Result: key recovered
+Real key: b'a1B2c3D4'
+Found key: b'a1B2c3D4'
+Fitness evaluations: 65860
+Result: key recovered
+
+Part 2. Replica tamper test (each byte of header, ciphertext, HMAC and salt, cut and extended ciphertext)
+Checks: 288
+Rejected: 288
+Accepted: 0
+Result: all changed replicas are rejected

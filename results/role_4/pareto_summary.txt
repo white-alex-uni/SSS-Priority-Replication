@@ -1,0 +1,9 @@
+Goals: S, R, T (T rounded to 2 digits), penalty for runs over the loss limit
+Evaluations GA: 50
+Evaluations Random Search: 50
+Front size GA: 9
+Front size Random Search: 8
+GA front covers Random Search front: 0.25
+Random Search front covers GA front: 0.556
+Winner: RandomSearch
+GA front has no dominated points: True

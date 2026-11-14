@@ -1,0 +1,10 @@
+S,R,T,params
+0.079556,0.928571,0.95,window_size=19 budget_bits=5352 second_copy=1.0298 third_extra=0.2186 prio_anomaly=6 prio_incident=1 critical_bonus=3 
+0.079387,0.998168,0.92,window_size=31 budget_bits=3828 second_copy=1.0798 third_extra=0.2328 prio_anomaly=2 prio_incident=4 critical_bonus=10 
+0.079387,0.998168,0.92,window_size=31 budget_bits=3828 second_copy=1.0798 third_extra=0.2328 prio_anomaly=2 prio_incident=4 critical_bonus=10 
+0.105477,0.989011,0.93,window_size=43 budget_bits=2116 second_copy=1.0 third_extra=0.2344 prio_anomaly=9 prio_incident=4 critical_bonus=9 
+0.079624,0.924908,0.95,window_size=19 budget_bits=4944 second_copy=1.0 third_extra=0.2186 prio_anomaly=7 prio_incident=1 critical_bonus=3 
+0.133541,0.998168,0.91,window_size=73 budget_bits=3001 second_copy=1.0 third_extra=0.7164 prio_anomaly=9 prio_incident=4 critical_bonus=9 
+0.126536,1.0,0.91,window_size=67 budget_bits=3001 second_copy=1.0178 third_extra=0.6827 prio_anomaly=2 prio_incident=1 critical_bonus=12 
+0.149654,0.992674,0.9,window_size=84 budget_bits=3001 second_copy=1.0 third_extra=0.6827 prio_anomaly=9 prio_incident=1 critical_bonus=12 
+0.133944,1.0,0.9,window_size=73 budget_bits=3001 second_copy=1.0 third_extra=0.6827 prio_anomaly=9 prio_incident=1 critical_bonus=9 
